@@ -21,6 +21,7 @@ var testEntries = []entry{
 func main() {
     router := gin.Default()
     router.GET("/", getAllEntries)
+    router.GET("/entries/:id", getEntryById)
     router.POST("/submit", createEntry)
 
     router.Run("localhost:3000")
@@ -28,6 +29,19 @@ func main() {
 
 func getAllEntries(c *gin.Context) {
     c.IndentedJSON(http.StatusOK, testEntries)
+}
+
+func getEntryById(c *gin.Context) {
+    id := c.Param("id")
+
+    for _,item := range testEntries {
+        if item.ID == id {
+            c.IndentedJSON(http.StatusOK, item)
+            return
+        }
+    }
+
+    c.IndentedJSON(http.StatusNotFound, gin.H{"message": "entry not found"})
 }
 
 func createEntry(c *gin.Context) {
