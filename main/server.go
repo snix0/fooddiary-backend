@@ -35,7 +35,8 @@ func main() {
         DBName: "fooddiary",
     }
 
-    db, err := sql.Open("mysql", cfg.FormatDSN())
+    var err error
+    db, err = sql.Open("mysql", cfg.FormatDSN())
     if err != nil {
         log.Fatal(err)
     }
@@ -56,7 +57,13 @@ func main() {
 }
 
 func getAllEntries(c *gin.Context) {
-    c.IndentedJSON(http.StatusOK, testEntries)
+    allEntries, err := queryAllEntries()
+    if err != nil {
+        log.Fatal("Unable to fetch all entries: %v", err)
+        return
+    }
+
+    c.IndentedJSON(http.StatusOK, allEntries)
 }
 
 func getEntryById(c *gin.Context) {
@@ -82,4 +89,28 @@ func createEntry(c *gin.Context) {
 
     testEntries = append(testEntries, newEntry)
     c.IndentedJSON(http.StatusCreated, testEntries)
+}
+
+func queryAllEntries() ([]entry, error) {
+    var entries []entry
+
+    rows, err := db.Query("SELECT id,title,description FROM entries")
+    if err != nil {
+        return nil, fmt.Errorf("queryAllEntries: %v", err)
+    }
+
+    defer rows.Close()
+
+    for rows.Next() {
+        var ent entry
+        if err := rows.Scan(&ent.ID, &ent.Title, &ent.Description); err != nil {
+            return nil, fmt.Errorf("queryAllEntries: %v", err)
+        }
+        entries = append(entries, ent)
+    }
+    if err := rows.Err(); err != nil {
+        return nil, fmt.Errorf("queryAllEntries: %v", err)
+    }
+
+    return entries, nil
 }
