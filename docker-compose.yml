@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:  
+  backend:
+    image: snix0/fooddiary-backend
+    build:
+      context: .
+    ports:
+      - "8080:8080"
