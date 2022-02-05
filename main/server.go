@@ -1,8 +1,13 @@
 package main
 
 import (
+    "os"
+    "log"
+    "fmt"
     "net/http"
     "github.com/gin-gonic/gin"
+    "github.com/go-sql-driver/mysql"
+    "database/sql"
 )
 
 type entry struct {
@@ -12,6 +17,8 @@ type entry struct {
     // Image TODO
 }
 
+var db *sql.DB
+
 var testEntries = []entry{
     { ID: "1", Title: "Beef Bourgignon", Description: "Julia's Finest" },
     { ID: "2", Title: "Chicken Rice", Description: "Singapore on a plate" },
@@ -19,6 +26,27 @@ var testEntries = []entry{
 }
 
 func main() {
+    // Establish database connection
+    cfg := mysql.Config{
+        User:   os.Getenv("DBUSER"),
+        Passwd: os.Getenv("DBPASS"),
+        Net:    "tcp",
+        Addr:   "fdmysql:3306",
+        DBName: "fooddiary",
+    }
+
+    db, err := sql.Open("mysql", cfg.FormatDSN())
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    if pingErr := db.Ping(); pingErr != nil {
+        log.Fatal(pingErr)
+    }
+
+    fmt.Println("Connected to database")
+
+    // Set up routes for API
     router := gin.Default()
     router.GET("/", getAllEntries)
     router.GET("/entries/:id", getEntryById)
