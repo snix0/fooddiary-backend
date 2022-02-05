@@ -8,6 +8,7 @@ import (
     "github.com/gin-gonic/gin"
     "github.com/go-sql-driver/mysql"
     "database/sql"
+    "strconv"
 )
 
 type entry struct {
@@ -69,14 +70,19 @@ func getAllEntries(c *gin.Context) {
 func getEntryById(c *gin.Context) {
     id := c.Param("id")
 
-    for _,item := range testEntries {
-        if item.ID == id {
-            c.IndentedJSON(http.StatusOK, item)
-            return
-        }
+    intId, err := strconv.Atoi(id)
+    if err != nil {
+        c.IndentedJSON(http.StatusBadRequest, gin.H{"message": "invalid id"})
+        return
     }
 
-    c.IndentedJSON(http.StatusNotFound, gin.H{"message": "entry not found"})
+    item, err := queryEntryById(intId)
+    if err != nil {
+        c.IndentedJSON(http.StatusNotFound, gin.H{"message": "entry not found"})
+        return
+    }
+
+    c.IndentedJSON(http.StatusOK, item)
 }
 
 func createEntry(c *gin.Context) {
@@ -88,7 +94,28 @@ func createEntry(c *gin.Context) {
     }
 
     testEntries = append(testEntries, newEntry)
-    c.IndentedJSON(http.StatusCreated, testEntries)
+
+    id,err := dbAddEntry(newEntry)
+    if err != nil {
+        log.Panic("Unable to add entry")
+    }
+
+    fmt.Println("Added ID: %d", id)
+
+    c.IndentedJSON(http.StatusCreated, gin.H{"message": "Entry created"})
+}
+
+func queryEntryById(id int) (entry, error) {
+    var ent entry
+
+    row := db.QueryRow("SELECT id,title,description FROM entries WHERE id=?", id)
+    if err := row.Scan(&ent.ID, &ent.Title, &ent.Description); err != nil {
+        if err == sql.ErrNoRows {
+            return ent, fmt.Errorf("queryEntryById [%d]: no such album", id)
+        }
+        return ent, fmt.Errorf("queryEntryById [%d]: %v", id, err)
+    }
+    return ent, nil
 }
 
 func queryAllEntries() ([]entry, error) {
@@ -113,4 +140,16 @@ func queryAllEntries() ([]entry, error) {
     }
 
     return entries, nil
+}
+
+func dbAddEntry(ent entry) (int64, error) {
+    result, err := db.Exec("INSERT INTO entries (title, description, image) VALUES (?, ?, '')", ent.Title, ent.Description)
+    if err != nil {
+        return 0, fmt.Errorf("dbAddEntry: %v", err)
+    }
+    id, err := result.LastInsertId()
+    if err != nil {
+        return 0, fmt.Errorf("dbAddEntry: %v", err)
+    }
+    return id, nil
 }
