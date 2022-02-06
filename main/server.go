@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
     "os"
@@ -19,7 +19,9 @@ type entry struct {
     Image string `json:"image"`
 }
 
-var db *sql.DB
+type Env struct {
+    db *sql.DB
+}
 
 func main() {
     // Establish database connection
@@ -27,12 +29,11 @@ func main() {
         User:   os.Getenv("DBUSER"),
         Passwd: os.Getenv("DBPASS"),
         Net:    "tcp",
-        Addr:   "fdmysql:3306",
+        Addr:   "172.17.0.4:3306",
         DBName: "fooddiary",
     }
 
-    var err error
-    db, err = sql.Open("mysql", cfg.FormatDSN())
+    db, err := sql.Open("mysql", cfg.FormatDSN())
     if err != nil {
         log.Fatal(err)
     }
@@ -43,13 +44,15 @@ func main() {
 
     fmt.Println("Connected to database")
 
+    env := &Env{db: db}
+
     // Set up routes for API
     router := gin.Default()
     router.Use(CORSMiddleware())
-    router.GET("/", getAllEntries)
-    router.GET("/entries/:id", getEntryById)
+    router.GET("/", env.getAllEntries)
+    router.GET("/entries/:id", env.getEntryById)
+    router.POST("/submit", env.createEntry)
     router.Static("/images", "images/")
-    router.POST("/submit", createEntry)
 
     router.Run("0.0.0.0:3000")
 }
@@ -71,17 +74,17 @@ func CORSMiddleware() gin.HandlerFunc {
     }
 }
 
-func getAllEntries(c *gin.Context) {
-    allEntries, err := queryAllEntries()
+func (e *Env) getAllEntries(c *gin.Context) {
+    allEntries, err := queryAllEntries(e.db)
     if err != nil {
-        log.Fatal("Unable to fetch all entries: %v", err)
+        log.Panic("Unable to fetch all entries: ", err)
         return
     }
 
     c.IndentedJSON(http.StatusOK, allEntries)
 }
 
-func getEntryById(c *gin.Context) {
+func (e *Env) getEntryById(c *gin.Context) {
     id := c.Param("id")
 
     intId, err := strconv.Atoi(id)
@@ -90,7 +93,7 @@ func getEntryById(c *gin.Context) {
         return
     }
 
-    item, err := queryEntryById(intId)
+    item, err := queryEntryById(e.db, intId)
     if err != nil {
         c.IndentedJSON(http.StatusNotFound, gin.H{"message": "entry not found"})
         return
@@ -99,7 +102,7 @@ func getEntryById(c *gin.Context) {
     c.IndentedJSON(http.StatusOK, item)
 }
 
-func createEntry(c *gin.Context) {
+func (e *Env) createEntry(c *gin.Context) {
     var newEntry entry
 
     file, err := c.FormFile("file")
@@ -124,20 +127,20 @@ func createEntry(c *gin.Context) {
 
     newEntry = entry{Title: c.PostForm("title"), Description: c.PostForm("description"), Image: "images/" + newFileName}
 
-    id,err := dbAddEntry(newEntry)
+    id,err := queryAddEntry(e.db, newEntry)
     if err != nil {
         log.Panic("Unable to add entry")
     }
 
-    fmt.Println("Added ID: %d", id)
+    fmt.Printf("Added ID: %d\n", id)
 
     c.IndentedJSON(http.StatusCreated, gin.H{"message": "Entry created"})
 }
 
-func queryEntryById(id int) (entry, error) {
+func queryEntryById(db *sql.DB, id int) (entry, error) {
     var ent entry
 
-    row := db.QueryRow("SELECT id,title,description FROM entries WHERE id=?", id)
+    row := db.QueryRow("SELECT title,description FROM entries WHERE id=?", id)
     if err := row.Scan(&ent.Title, &ent.Description); err != nil {
         if err == sql.ErrNoRows {
             return ent, fmt.Errorf("queryEntryById [%d]: no such album", id)
@@ -147,7 +150,7 @@ func queryEntryById(id int) (entry, error) {
     return ent, nil
 }
 
-func queryAllEntries() ([]entry, error) {
+func queryAllEntries(db *sql.DB) ([]entry, error) {
     var entries []entry
 
     rows, err := db.Query("SELECT title,description,image FROM entries")
@@ -171,14 +174,14 @@ func queryAllEntries() ([]entry, error) {
     return entries, nil
 }
 
-func dbAddEntry(ent entry) (int64, error) {
+func queryAddEntry(db *sql.DB, ent entry) (int64, error) {
     result, err := db.Exec("INSERT INTO entries (title, description, image) VALUES (?, ?, ?)", ent.Title, ent.Description, ent.Image)
     if err != nil {
-        return 0, fmt.Errorf("dbAddEntry: %v", err)
+        return 0, fmt.Errorf("queryAddEntry: %v", err)
     }
     id, err := result.LastInsertId()
     if err != nil {
-        return 0, fmt.Errorf("dbAddEntry: %v", err)
+        return 0, fmt.Errorf("queryAddEntry: %v", err)
     }
     return id, nil
 }
