@@ -9,22 +9,17 @@ import (
     "github.com/go-sql-driver/mysql"
     "database/sql"
     "strconv"
+    "path/filepath"
+    "github.com/google/uuid"
 )
 
 type entry struct {
-    ID string `json:"id"`
     Title string `json:"title"`
     Description string `json:"description"`
-    // Image TODO
+    Image string `json:"image"`
 }
 
 var db *sql.DB
-
-var testEntries = []entry{
-    { ID: "1", Title: "Beef Bourgignon", Description: "Julia's Finest" },
-    { ID: "2", Title: "Chicken Rice", Description: "Singapore on a plate" },
-    { ID: "3", Title: "Egg Tarts", Description: "Sweet custard goodness" },
-}
 
 func main() {
     // Establish database connection
@@ -50,11 +45,30 @@ func main() {
 
     // Set up routes for API
     router := gin.Default()
+    router.Use(CORSMiddleware())
     router.GET("/", getAllEntries)
     router.GET("/entries/:id", getEntryById)
+    router.Static("/images", "images/")
     router.POST("/submit", createEntry)
 
-    router.Run("localhost:3000")
+    router.Run("0.0.0.0:3000")
+}
+
+// For testing only
+func CORSMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+        c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+        c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+        c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
+
+        if c.Request.Method == "OPTIONS" {
+            c.AbortWithStatus(204)
+            return
+        }
+
+        c.Next()
+    }
 }
 
 func getAllEntries(c *gin.Context) {
@@ -88,12 +102,27 @@ func getEntryById(c *gin.Context) {
 func createEntry(c *gin.Context) {
     var newEntry entry
 
-    // Bind received JSON to newEntry
-    if err := c.BindJSON(&newEntry); err != nil {
+    file, err := c.FormFile("file")
+    if err != nil {
+        fmt.Println(err)
+        c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{ "message": "Error uploading image" })
         return
     }
 
-    testEntries = append(testEntries, newEntry)
+    extension := filepath.Ext(file.Filename)
+    newFileName := uuid.New().String() + extension
+
+    fmt.Printf("New filename being saved to %s", newFileName)
+
+    if err := c.SaveUploadedFile(file, "images/" + newFileName); err != nil {
+        c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{ "message": "Unable to save the file" })
+        return
+    }
+
+    // Bind received JSON to newEntry
+    fmt.Printf("%s | %s\n", c.PostForm("title"), c.PostForm("description"))
+
+    newEntry = entry{Title: c.PostForm("title"), Description: c.PostForm("description"), Image: "images/" + newFileName}
 
     id,err := dbAddEntry(newEntry)
     if err != nil {
@@ -109,7 +138,7 @@ func queryEntryById(id int) (entry, error) {
     var ent entry
 
     row := db.QueryRow("SELECT id,title,description FROM entries WHERE id=?", id)
-    if err := row.Scan(&ent.ID, &ent.Title, &ent.Description); err != nil {
+    if err := row.Scan(&ent.Title, &ent.Description); err != nil {
         if err == sql.ErrNoRows {
             return ent, fmt.Errorf("queryEntryById [%d]: no such album", id)
         }
@@ -121,7 +150,7 @@ func queryEntryById(id int) (entry, error) {
 func queryAllEntries() ([]entry, error) {
     var entries []entry
 
-    rows, err := db.Query("SELECT id,title,description FROM entries")
+    rows, err := db.Query("SELECT title,description,image FROM entries")
     if err != nil {
         return nil, fmt.Errorf("queryAllEntries: %v", err)
     }
@@ -130,7 +159,7 @@ func queryAllEntries() ([]entry, error) {
 
     for rows.Next() {
         var ent entry
-        if err := rows.Scan(&ent.ID, &ent.Title, &ent.Description); err != nil {
+        if err := rows.Scan(&ent.Title, &ent.Description, &ent.Image); err != nil {
             return nil, fmt.Errorf("queryAllEntries: %v", err)
         }
         entries = append(entries, ent)
@@ -143,7 +172,7 @@ func queryAllEntries() ([]entry, error) {
 }
 
 func dbAddEntry(ent entry) (int64, error) {
-    result, err := db.Exec("INSERT INTO entries (title, description, image) VALUES (?, ?, '')", ent.Title, ent.Description)
+    result, err := db.Exec("INSERT INTO entries (title, description, image) VALUES (?, ?, ?)", ent.Title, ent.Description, ent.Image)
     if err != nil {
         return 0, fmt.Errorf("dbAddEntry: %v", err)
     }
