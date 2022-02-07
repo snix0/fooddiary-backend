@@ -6,7 +6,7 @@ services:
     build:
       context: ./nginx
     ports:
-      - "8080:8080"
+        - "80:80"
     links:
         - fdserver
         - fdmysql
@@ -19,16 +19,12 @@ services:
     image: fdserver
     build:
         context: .
-    ports:
-        - "3000:3000"
     depends_on:
         - "fdmysql"
   fdfrontend:
     image: fdfrontend
     build:
         context: github.com/snix0/fooddiary-frontend
-    ports:
-        - "3001:3000"
     links:
         - fdmysql
         - fdserver

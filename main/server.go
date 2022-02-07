@@ -56,7 +56,7 @@ func main() {
     router.POST("/submit", env.createEntry)
     router.Static("/images", "images/")
 
-    router.Run("0.0.0.0:3000")
+    router.Run(":80")
 }
 
 // For testing only

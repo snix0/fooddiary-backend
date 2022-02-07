@@ -11,4 +11,6 @@ COPY . .
 
 WORKDIR /app/main
 
+EXPOSE 80
+
 CMD [ "go", "run", "/app/main/server.go" ]
