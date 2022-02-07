@@ -1,4 +1,4 @@
-package server
+package main
 
 import (
     "os"
@@ -29,9 +29,11 @@ func main() {
         User:   os.Getenv("DBUSER"),
         Passwd: os.Getenv("DBPASS"),
         Net:    "tcp",
-        Addr:   "172.17.0.4:3306",
+        Addr:   "fdmysql:3306",
         DBName: "fooddiary",
     }
+
+    fmt.Println("Attempting to connect to database")
 
     db, err := sql.Open("mysql", cfg.FormatDSN())
     if err != nil {

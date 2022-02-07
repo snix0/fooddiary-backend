@@ -1,9 +1,49 @@
 version: '3.8'
 
 services:  
-  backend:
-    image: snix0/fooddiary-backend
+  fdproxy:
+    image: fdproxy
     build:
-      context: .
+      context: ./nginx
     ports:
       - "8080:8080"
+    links:
+        - fdserver
+        - fdmysql
+        - fdfrontend
+    networks:
+        default:
+            aliases:
+                - ${HOSTNAME}
+  fdserver:
+    image: fdserver
+    build:
+        context: .
+    ports:
+        - "3000:3000"
+    depends_on:
+        - "fdmysql"
+  fdfrontend:
+    image: fdfrontend
+    build:
+        context: github.com/snix0/fooddiary-frontend
+    ports:
+        - "3001:3000"
+    links:
+        - fdmysql
+        - fdserver
+    networks:
+        default:
+            aliases:
+                - ${HOSTNAME}
+  fdmysql:
+    image: mysql
+    volumes:
+        - ../mysql:/var/lib/mysql
+    environment:
+        - DBUSER=root
+        - DBPASS=superu
+    ports:
+        - "3306:3306"
+networks:
+    default:
